@@ -9,6 +9,9 @@ bevy = { version = "0.14", default-features = false, features = [
   "bevy_render",
   "bevy_core_pipeline",
   "bevy_sprite",
+  "bevy_ui",
+  "bevy_text",
+  "bevy_asset",
   "png",
   "dynamic_linking",
 ] }

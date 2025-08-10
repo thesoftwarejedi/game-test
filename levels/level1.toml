@@ -1,0 +1,29 @@
+# Level 1
+[meta]
+name = "level1"
+
+[start]
+x = -300.0
+y = -130.0
+
+# Platforms are axis-aligned rectangles (center x,y; size w,h)
+[[platforms]]
+x = 0.0
+y = -150.0
+w = 1000.0
+h = 40.0
+
+# A small step platform
+[[platforms]]
+x = 300.0
+y = -90.0
+w = 120.0
+h = 20.0
+
+# Exit to level2: stand in this area to transition
+[[exits]]
+x = 480.0
+y = -110.0
+w = 40.0
+h = 80.0
+next = "level2"

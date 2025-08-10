@@ -31,7 +31,7 @@ max_jumps = 2
 # Smoothing lag time constant (seconds). Higher = more delay/inertia
 lag_s = 1
 # Velocity lookahead (seconds). Camera leads the player based on speed
-lookahead_s = 2
+lookahead_s = 0.8
 # Subtle human-like noise amplitude (pixels)
 noise_amp = 0.1
 # Optionally override per-axis amplitudes; if not set, fall back to noise_amp

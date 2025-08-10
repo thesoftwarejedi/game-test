@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use serde::Deserialize;
 use std::fs;
+use std::path::Path;
 
 // Basic side scroller constants
 // Defaults are overridden by config.toml if present
@@ -25,6 +26,96 @@ struct Velocity(Vec2);
 
 #[derive(Component)]
 struct Ground;
+
+#[derive(Component)]
+struct Exit {
+    next: String,
+    size: Vec2,
+}
+
+// ---------- Lives, UI, and Game Over ----------
+fn death_check_system(
+    mut lives: ResMut<Lives>,
+    mut state: ResMut<GameState>,
+    mut pending: ResMut<PendingStart>,
+    level_start: Option<Res<LevelStart>>,
+    q_player: Query<&Transform, With<Player>>,
+    mut q_over: Query<&mut Visibility, With<GameOverUi>>,
+) {
+    if *state == GameState::GameOver { return; }
+    const DEATH_Y: f32 = -600.0;
+    if let Ok(t) = q_player.get_single() {
+        if t.translation.y < DEATH_Y {
+            if lives.current > 0 { lives.current -= 1; }
+            if lives.current == 0 {
+                *state = GameState::GameOver;
+                if let Ok(mut vis) = q_over.get_single_mut() { *vis = Visibility::Visible; }
+            } else {
+                let start = level_start.as_ref().map(|s| s.0).unwrap_or(Vec2::ZERO);
+                pending.0 = Some(start);
+            }
+        }
+    }
+}
+
+fn update_lives_ui_system(
+    lives: Res<Lives>,
+    mut q_slots: Query<(&HeartSlot, &mut BackgroundColor)>,
+) {
+    if !lives.is_changed() { return; }
+    for (slot, mut bg) in q_slots.iter_mut() {
+        if slot.0 < lives.current as usize {
+            bg.0 = Color::srgb(0.9, 0.1, 0.2);
+        } else {
+            bg.0 = Color::srgb(0.3, 0.3, 0.35);
+        }
+    }
+}
+
+fn game_over_restart_system(
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut lives: ResMut<Lives>,
+    mut state: ResMut<GameState>,
+    mut q_over: Query<&mut Visibility, With<GameOverUi>>,
+    mut pending: ResMut<PendingStart>,
+    level_start: Option<Res<LevelStart>>,
+    mut level_req: ResMut<LevelRequest>,
+    level_mgr: Res<LevelManager>,
+) {
+    if *state != GameState::GameOver { return; }
+    if keyboard.just_pressed(KeyCode::Space) {
+        lives.current = lives.max;
+        *state = GameState::Running;
+        if let Ok(mut vis) = q_over.get_single_mut() { *vis = Visibility::Hidden; }
+        // Reload current level
+        level_req.0 = Some(level_mgr.current.clone());
+        // Ensure player will spawn at start
+        let start = level_start.as_ref().map(|s| s.0).unwrap_or(Vec2::ZERO);
+        pending.0 = Some(start);
+    }
+}
+
+#[derive(Component)]
+struct LevelEntity; // marker to cleanup when switching levels
+
+// ---------- Lives/UI types ----------
+#[derive(Resource, Clone, Copy)]
+struct Lives { current: u8, max: u8 }
+
+#[derive(Resource, Clone, Copy, PartialEq, Eq)]
+enum GameState { Running, GameOver }
+
+#[derive(Component)]
+struct LivesUi; // container for hearts
+
+#[derive(Component)]
+struct HeartSlot(pub usize);
+
+#[derive(Component)]
+struct GameOverUi;
+
+#[derive(Resource, Default)]
+struct LevelStart(pub Vec2);
 
 #[derive(Component, Default)]
 struct JumpState {
@@ -99,10 +190,41 @@ impl Default for GameConfig {
 
 fn default_max_jumps() -> u8 { 2 }
 
+// Removed horizontal world bounds; allow free movement
+
+#[derive(Resource, Default)]
+struct PendingStart(Option<Vec2>);
+
 #[derive(Resource)]
-struct WorldBounds {
-    left: f32,
-    right: f32,
+struct LevelManager {
+    current: String,
+}
+
+#[derive(Resource, Default)]
+struct LevelRequest(Option<String>);
+
+// ---------- Level file schema ----------
+
+#[derive(Deserialize)]
+struct LevelMeta { name: String }
+
+#[derive(Deserialize)]
+struct StartDef { x: f32, y: f32 }
+
+#[derive(Deserialize)]
+struct PlatformDef { x: f32, y: f32, w: f32, h: f32 }
+
+#[derive(Deserialize)]
+struct ExitDef { x: f32, y: f32, w: f32, h: f32, next: String }
+
+#[derive(Deserialize)]
+struct LevelDef {
+    meta: LevelMeta,
+    start: StartDef,
+    #[serde(default)]
+    platforms: Vec<PlatformDef>,
+    #[serde(default)]
+    exits: Vec<ExitDef>,
 }
 
 fn main() {
@@ -124,12 +246,22 @@ fn main() {
             .set(ImagePlugin::default_nearest()),
         )
         .insert_resource(cfg)
-        .insert_resource(WorldBounds { left: -480.0, right: 480.0 })
+        .insert_resource(PendingStart::default())
+        .insert_resource(LevelManager { current: "level1".to_string() })
+        .insert_resource(LevelRequest::default())
+        .insert_resource(Lives { current: 3, max: 3 })
+        .insert_resource(GameState::Running)
         .add_systems(Startup, setup)
         .add_systems(Update, (
             player_input_system,
             physics_and_collision_system,
             camera_follow_system,
+            exit_detection_system,
+            level_transition_system,
+            apply_pending_start_system,
+            death_check_system,
+            update_lives_ui_system,
+            game_over_restart_system,
         ))
         .run();
 }
@@ -141,24 +273,63 @@ fn load_config() -> GameConfig {
     }
 }
 
-fn setup(mut commands: Commands) {
+fn setup(
+    mut commands: Commands,
+    level_mgr: Res<LevelManager>,
+    mut pending: ResMut<PendingStart>,
+) {
     // Camera
     commands.spawn(Camera2dBundle::default());
 
-    // Ground
-    commands
+    // UI: Lives hearts (top-left) as red squares (no font dependency)
+    let container = commands
         .spawn((
-            SpriteBundle {
-                sprite: Sprite {
-                    color: Color::srgb(0.20, 0.8, 0.25),
-                    custom_size: Some(GROUND_SIZE),
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(8.0),
+                    left: Val::Px(10.0),
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(6.0),
                     ..default()
                 },
-                transform: Transform::from_xyz(0.0, GROUND_Y, 0.0),
+                background_color: BackgroundColor(Color::NONE),
                 ..default()
             },
-            Ground,
-        ));
+            LivesUi,
+        ))
+        .id();
+    for i in 0..3usize {
+        commands.entity(container).with_children(|p| {
+            p.spawn((
+                NodeBundle {
+                    style: Style { width: Val::Px(18.0), height: Val::Px(18.0), ..default() },
+                    background_color: BackgroundColor(Color::srgb(0.9, 0.1, 0.2)),
+                    ..default()
+                },
+                HeartSlot(i),
+            ));
+        });
+    }
+
+    // UI: Game Over (hidden initially)
+    commands.spawn((
+        TextBundle {
+            text: Text::from_section(
+                "GAME OVER\nPress SPACE to restart",
+                TextStyle { font_size: 42.0, color: Color::WHITE, ..default() },
+            ),
+            style: Style {
+                position_type: PositionType::Absolute,
+                top: Val::Percent(40.0),
+                left: Val::Percent(20.0),
+                ..default()
+            },
+            visibility: Visibility::Hidden,
+            ..default()
+        },
+        GameOverUi,
+    ));
 
     // Player
     commands.spawn((
@@ -168,13 +339,16 @@ fn setup(mut commands: Commands) {
                 custom_size: Some(PLAYER_SIZE),
                 ..default()
             },
-            transform: Transform::from_xyz(-300.0, GROUND_Y + GROUND_SIZE.y / 2.0 + PLAYER_SIZE.y / 2.0, 1.0),
+            transform: Transform::from_xyz(0.0, 0.0, 1.0),
             ..default()
         },
         Player,
         Velocity::default(),
         JumpState::default(),
     ));
+
+    // Load initial level
+    do_load_level(&mut commands, &mut pending, &level_mgr.current);
 }
 
 fn player_input_system(
@@ -192,10 +366,9 @@ fn player_input_system(
 
 fn physics_and_collision_system(
     time: Res<Time>,
-    bounds: Res<WorldBounds>,
     cfg: Res<GameConfig>,
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut q_player: Query<(&mut Transform, &mut Velocity, &mut JumpState), (With<Player>, Without<Ground>)>,
+    mut q_player: Query<(&mut Transform, &mut Velocity, &mut JumpState), With<Player>>,
     q_ground: Query<(&Transform, &Sprite), (With<Ground>, Without<Player>)>,
 ) {
     let dt = time.delta_seconds();
@@ -293,8 +466,7 @@ fn physics_and_collision_system(
             jump.jumps_used = 0;
         }
 
-        // Keep player within world bounds horizontally
-        t.translation.x = t.translation.x.clamp(bounds.left + player_half.x, bounds.right - player_half.x);
+        // No horizontal clamp: allow moving beyond edges
     }
 }
 
@@ -348,4 +520,118 @@ fn approach(current: f32, target: f32, max_delta: f32) -> f32 {
     let delta = target - current;
     let step = max_delta.clamp(0.0, delta.abs());
     current + step * delta.signum()
+}
+
+// ---------- Level helpers & systems ----------
+
+fn do_load_level(commands: &mut Commands, pending: &mut ResMut<PendingStart>, level_name: &str) {
+    if let Some(def) = read_level(level_name) {
+        // Spawn platforms
+        for p in def.platforms {
+            commands.spawn((
+                SpriteBundle {
+                    sprite: Sprite {
+                        color: Color::srgb(0.20, 0.8, 0.25),
+                        custom_size: Some(Vec2::new(p.w, p.h)),
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(p.x, p.y, 0.0),
+                    ..default()
+                },
+                Ground,
+                LevelEntity,
+            ));
+        }
+
+        // Spawn exits (semi-transparent blue)
+        for e in def.exits {
+            commands.spawn((
+                SpriteBundle {
+                    sprite: Sprite {
+                        color: Color::rgba(0.2, 0.4, 1.0, 0.3),
+                        custom_size: Some(Vec2::new(e.w, e.h)),
+                        ..default()
+                    },
+                    transform: Transform::from_xyz(e.x, e.y, 0.5),
+                    ..default()
+                },
+                Exit { next: e.next, size: Vec2::new(e.w, e.h) },
+                LevelEntity,
+            ));
+        }
+
+        // Set player start to be applied next frame and remember for respawns
+        let start = Vec2::new(def.start.x, def.start.y);
+        pending.0 = Some(start);
+        commands.insert_resource(LevelStart(start));
+    }
+}
+
+fn read_level(name: &str) -> Option<LevelDef> {
+    let path = format!("levels/{}.toml", name);
+    let path = Path::new(&path);
+    let content = fs::read_to_string(path).ok()?;
+    toml::from_str::<LevelDef>(&content).ok()
+}
+
+fn apply_pending_start_system(
+    mut pending: ResMut<PendingStart>,
+    mut q_player: Query<(&mut Transform, &mut Velocity, &mut JumpState), With<Player>>,
+    mut q_camera: Query<&mut Transform, (With<Camera>, Without<Player>)>,
+) {
+    if let Some(pos) = pending.0.take() {
+        if let Ok((mut t, mut v, mut j)) = q_player.get_single_mut() {
+            t.translation.x = pos.x;
+            t.translation.y = pos.y;
+            v.0 = Vec2::ZERO;
+            j.jumping = false;
+            j.hold_ms = 0.0;
+            j.jumps_used = 0;
+        }
+        if let Ok(mut cam_t) = q_camera.get_single_mut() {
+            cam_t.translation.x = pos.x;
+            cam_t.translation.y = 0.0; // reset baseline Y so camera doesn't stay low
+        }
+    }
+}
+
+fn exit_detection_system(
+    mut level_req: ResMut<LevelRequest>,
+    q_player: Query<&Transform, With<Player>>,
+    q_exits: Query<(&Transform, &Exit)>,
+) {
+    if level_req.0.is_some() { return; }
+    if let Ok(pt) = q_player.get_single() {
+        let p_half = PLAYER_SIZE / 2.0;
+        let px = pt.translation.x;
+        let py = pt.translation.y;
+        for (et, exit) in q_exits.iter() {
+            let gx = et.translation.x;
+            let gy = et.translation.y;
+            let half = exit.size / 2.0;
+            let dx = (px - gx).abs();
+            let dy = (py - gy).abs();
+            if dx < (p_half.x + half.x) && dy < (p_half.y + half.y) {
+                level_req.0 = Some(exit.next.clone());
+                break;
+            }
+        }
+    }
+}
+
+fn level_transition_system(
+    mut commands: Commands,
+    mut req: ResMut<LevelRequest>,
+    mut pending: ResMut<PendingStart>,
+    mut level_mgr: ResMut<LevelManager>,
+    q_level_entities: Query<Entity, With<LevelEntity>>,
+) {
+    if let Some(next) = req.0.take() {
+        // Despawn previous level entities
+        for e in q_level_entities.iter() {
+            commands.entity(e).despawn_recursive();
+        }
+        level_mgr.current = next.clone();
+        do_load_level(&mut commands, &mut pending, &next);
+    }
 }
