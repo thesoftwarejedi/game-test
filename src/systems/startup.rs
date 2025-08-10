@@ -5,12 +5,17 @@ use crate::resources::{LevelManager, PendingStart, PLAYER_SIZE};
 use crate::systems::levels::do_load_level;
 use crate::systems::ui::setup_ui;
 
-pub fn setup(mut commands: Commands, level_mgr: Res<LevelManager>, mut pending: ResMut<PendingStart>) {
+pub fn setup(
+    mut commands: Commands,
+    level_mgr: Res<LevelManager>,
+    mut pending: ResMut<PendingStart>,
+    asset_server: Res<AssetServer>,
+) {
     // Camera
     commands.spawn(Camera2dBundle::default());
 
     // UI
-    setup_ui(commands.reborrow());
+    setup_ui(commands.reborrow(), asset_server);
 
     // Player
     commands.spawn((

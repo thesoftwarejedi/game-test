@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::components::{GameOverUi, HeartSlot, LivesUi};
 use crate::resources::{GameState, LevelManager, LevelRequest, LevelStart, Lives, PendingStart};
 
-pub fn setup_ui(mut commands: Commands) {
+pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Lives hearts container
     let container = commands
         .spawn((
@@ -35,24 +35,53 @@ pub fn setup_ui(mut commands: Commands) {
         });
     }
 
-    // Game Over text
-    commands.spawn((
-        TextBundle {
-            text: Text::from_section(
-                "GAME OVER\nPress SPACE to restart",
-                TextStyle { font_size: 42.0, color: Color::WHITE, ..default() },
-            ),
-            style: Style {
-                position_type: PositionType::Absolute,
-                top: Val::Percent(40.0),
-                left: Val::Percent(20.0),
+    // Game Over overlay (visible even if font missing)
+    let overlay = commands
+        .spawn((
+            NodeBundle {
+                style: Style {
+                    position_type: PositionType::Absolute,
+                    top: Val::Px(0.0),
+                    left: Val::Px(0.0),
+                    right: Val::Px(0.0),
+                    bottom: Val::Px(0.0),
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    ..default()
+                },
+                background_color: BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)),
+                visibility: Visibility::Hidden,
                 ..default()
             },
-            visibility: Visibility::Hidden,
-            ..default()
-        },
-        GameOverUi,
-    ));
+            GameOverUi,
+        ))
+        .id();
+
+    // Centered panel
+    commands.entity(overlay).with_children(|parent| {
+        parent.spawn((
+            NodeBundle {
+                style: Style {
+                    padding: UiRect::all(Val::Px(20.0)),
+                    ..default()
+                },
+                background_color: BackgroundColor(Color::srgb(0.2, 0.0, 0.0)),
+                ..default()
+            },
+        ))
+        .with_children(|panel| {
+            // Attempt to load a font from assets; if not present, the overlay still indicates Game Over
+            let font: Handle<Font> = asset_server.load("fonts/FiraSans-Bold.ttf");
+            panel.spawn(TextBundle {
+                text: Text::from_section(
+                    "GAME OVER\nPress SPACE to restart",
+                    TextStyle { font, font_size: 42.0, color: Color::WHITE },
+                )
+                .with_justify(JustifyText::Center),
+                ..default()
+            });
+        });
+    });
 }
 
 pub fn update_lives_ui_system(
