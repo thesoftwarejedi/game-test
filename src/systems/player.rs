@@ -105,7 +105,28 @@ pub fn physics_and_collision_system(
 
         // Jumping: allow up to max_jumps
         if keyboard.just_pressed(KeyCode::Space) {
-            let can_jump = if grounded { true } else { jump.jumps_used < cfg.jump.max_jumps };
+            let (can_jump, bonus_triggered) = if grounded { 
+                (true, false) 
+            } else { 
+                // 10% chance to grant an extra jump: refund one usage
+                // simple hash-based RNG without external crates
+                let tbits = (time.elapsed_seconds() * 1_000_000.0) as u32;
+                let xb = t.translation.x.to_bits();
+                let yb = t.translation.y.to_bits();
+                let mut h = xb ^ yb ^ tbits ^ (jump.jumps_used as u32);
+                // xorshift
+                h ^= h << 13;
+                h ^= h >> 17;
+                h ^= h << 5;
+                let r01 = (h as f32 / u32::MAX as f32).clamp(0.0, 1.0);
+                let bonus_triggered = if r01 < 0.10 && jump.jumps_used > 1 {
+                    jump.jumps_used -= 1; // refund one, effectively adding an extra jump
+                    true
+                } else {
+                    false
+                };
+                (jump.jumps_used < cfg.jump.max_jumps, bonus_triggered)
+            };
             if can_jump {
                 v.y = cfg.jump.velocity;
                 jump.jumping = true;
@@ -114,24 +135,6 @@ pub fn physics_and_collision_system(
                     jump.jumps_used = 1;
                 } else {
                     jump.jumps_used = (jump.jumps_used + 1).min(cfg.jump.max_jumps);
-                }
-                // 10% chance to grant an extra jump: refund one usage
-                let mut bonus_triggered = false;
-                {
-                    // simple hash-based RNG without external crates
-                    let tbits = (time.elapsed_seconds() * 1_000_000.0) as u32;
-                    let xb = t.translation.x.to_bits();
-                    let yb = t.translation.y.to_bits();
-                    let mut h = xb ^ yb ^ tbits ^ (jump.jumps_used as u32);
-                    // xorshift
-                    h ^= h << 13;
-                    h ^= h >> 17;
-                    h ^= h << 5;
-                    let r01 = (h as f32 / u32::MAX as f32).clamp(0.0, 1.0);
-                    if r01 < 0.10 && jump.jumps_used > 1 {
-                        jump.jumps_used -= 1; // refund one, effectively adding an extra jump
-                        bonus_triggered = true;
-                    }
                 }
                 // Emit burst event(s)
                 if bonus_triggered {

@@ -13,6 +13,7 @@ pub struct ParallaxLayer {
     // 0.0 = follows camera fully (foreground-ish), smaller moves slower; typical far layers < 1
     pub factor: f32,
     pub base_y: f32,
+    pub base_x: f32,
 }
 
 pub fn setup_parallax_background(
@@ -35,7 +36,7 @@ pub fn setup_parallax_background(
             ..default()
         },
         Background,
-        ParallaxLayer { factor: 0.05, base_y: 0.0 },
+        ParallaxLayer { factor: 0.05, base_y: 0.0, base_x: 0.0 },
     ));
 
     // Helper to spawn a wavy hill mesh
@@ -81,16 +82,51 @@ pub fn setup_parallax_background(
                 ..default()
             },
             Background,
-            ParallaxLayer { factor, base_y },
+            ParallaxLayer { factor, base_y, base_x: 0.0 },
         ));
     };
 
     // Far hills
-    spawn_wave(Color::srgb(0.55, 0.75, 0.85), -15.0, 0.15, -60.0, 24.0, 0.0035, 0.0, -220.0);
+    spawn_wave(Color::srgb(0.55, 0.75, 0.85), -15.0, 0.15, 20.0, 24.0, 0.0235, 0.0, -500.0);
     // Mid hills
-    spawn_wave(Color::srgb(0.40, 0.70, 0.55), -12.0, 0.30, -90.0, 36.0, 0.0045, 1.2, -260.0);
+    spawn_wave(Color::srgb(0.40, 0.70, 0.55), -12.0, 0.30, -30.0, 36.0, 0.0095, 1.2, -500.0);
     // Near hills
-    spawn_wave(Color::srgb(0.20, 0.55, 0.35), -9.0, 0.45, -120.0, 46.0, 0.0050, 2.4, -300.0);
+    spawn_wave(Color::srgb(0.20, 0.55, 0.35), -9.0, 0.45, -120.0, 46.0, 0.0050, 2.4, -500.0);
+
+    // Sun: slow parallax, start on the right
+    // Build a simple disc mesh (triangle fan)
+    let sun_segments = 64usize;
+    let sun_r = 60.0f32;
+    let mut positions: Vec<[f32; 3]> = Vec::with_capacity(sun_segments + 2);
+    let mut uvs: Vec<[f32; 2]> = Vec::with_capacity(sun_segments + 2);
+    positions.push([0.0, 0.0, -16.0]);
+    uvs.push([0.5, 0.5]);
+    for i in 0..=sun_segments {
+        let a = i as f32 / sun_segments as f32 * std::f32::consts::TAU;
+        positions.push([a.cos() * sun_r, a.sin() * sun_r, -16.0]);
+        uvs.push([a.cos() * 0.5 + 0.5, a.sin() * 0.5 + 0.5]);
+    }
+    let mut indices: Vec<u32> = Vec::with_capacity(sun_segments * 3);
+    for i in 1..=sun_segments as u32 {
+        indices.extend_from_slice(&[0, i, i + 1]);
+    }
+    let mut sun_mesh = Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default());
+    sun_mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    sun_mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    sun_mesh.insert_indices(Indices::U32(indices));
+    let sun_mesh_h = meshes.add(sun_mesh);
+    let sun_mat_h = materials.add(ColorMaterial::from(Color::srgb(1.0, 0.92, 0.35)));
+    let sun_start_x = width * 0.6; // start on the right
+    commands.spawn((
+        MaterialMesh2dBundle {
+            mesh: sun_mesh_h.into(),
+            material: sun_mat_h,
+            transform: Transform::from_translation(Vec3::new(0.0, 0.0, -16.0)),
+            ..default()
+        },
+        Background,
+        ParallaxLayer { factor: 0.02, base_y: 120.0, base_x: sun_start_x },
+    ));
 }
 
 pub fn update_parallax_background(
@@ -103,7 +139,7 @@ pub fn update_parallax_background(
     for (layer, mut t) in layers.iter_mut() {
         // Move opposite relative to camera to create parallax illusion.
         // factor closer to 0 -> slower movement relative to camera.
-        t.translation.x = cam_x * (1.0 - layer.factor);
+        t.translation.x = layer.base_x + cam_x * (1.0 - layer.factor);
         t.translation.y = layer.base_y; // keep vertical anchor stable
     }
 }
