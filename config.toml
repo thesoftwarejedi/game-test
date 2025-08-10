@@ -1,0 +1,25 @@
+# Gameplay tuning
+[max_speed]
+# Horizontal max speed (pixels/sec)
+value = 300.0
+
+[acceleration]
+# Rate moving toward target speed when holding A/D (pixels/sec^2)
+value = 2000.0
+
+[deceleration]
+# Rate slowing to a stop when no input (pixels/sec^2)
+value = 1800.0
+
+[gravity]
+# Downward acceleration (pixels/sec^2)
+value = 1400.0
+
+[jump]
+# Initial jump velocity (pixels/sec)
+velocity = 600.0
+# Maximum time jump can be extended by holding Space (milliseconds)
+max_hold_ms = 180.0
+# When releasing Space early (before max_hold_ms), vertical velocity is scaled by this factor
+# Smaller = shorter tap jumps
+cut_factor = 0.5
