@@ -1,5 +1,7 @@
 # Rust Side Scroller (Bevy)
 
+**Sparing this sentence, this entire program and documentation is written by Windsurf AI w/ model gpt5 (low reasoning).**
+
 A minimal side scroller made with the Bevy game engine. Player can run and jump on a ground platform. Think early Super Mario controls.
 
 ## Requirements
