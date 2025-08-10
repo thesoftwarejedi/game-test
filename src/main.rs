@@ -30,6 +30,7 @@ struct Ground;
 struct JumpState {
     jumping: bool,
     hold_ms: f32,
+    jumps_used: u8,
 }
 
 #[derive(Deserialize, Clone)]
@@ -40,6 +41,25 @@ struct JumpCfg {
     velocity: f32,
     max_hold_ms: f32,
     cut_factor: f32,
+    #[serde(default = "default_max_jumps")]
+    max_jumps: u8,
+}
+
+#[derive(Deserialize, Clone)]
+struct CameraCfg {
+    // Time constant (seconds) for smoothing toward target
+    lag_s: f32,
+    // How far ahead to look in the direction of player velocity (seconds)
+    lookahead_s: f32,
+    // Noise amplitude in pixels
+    noise_amp: f32,
+    // Noise base frequency in Hz
+    noise_freq_hz: f32,
+    // Optional per-axis amplitudes; if omitted, fall back to noise_amp
+    #[serde(default)]
+    noise_amp_x: Option<f32>,
+    #[serde(default)]
+    noise_amp_y: Option<f32>,
 }
 
 #[derive(Deserialize, Resource, Clone)]
@@ -49,6 +69,7 @@ struct GameConfig {
     deceleration: Scalar,
     gravity: Scalar,
     jump: JumpCfg,
+    camera: CameraCfg,
 }
 
 impl Default for GameConfig {
@@ -62,10 +83,21 @@ impl Default for GameConfig {
                 velocity: DEFAULT_JUMP_VELOCITY,
                 max_hold_ms: DEFAULT_JUMP_MAX_HOLD_MS,
                 cut_factor: DEFAULT_JUMP_CUT_FACTOR,
+                max_jumps: 2,
+            },
+            camera: CameraCfg {
+                lag_s: 0.15,
+                lookahead_s: 0.25,
+                noise_amp: 2.0,
+                noise_freq_hz: 0.7,
+                noise_amp_x: None,
+                noise_amp_y: None,
             },
         }
     }
 }
+
+fn default_max_jumps() -> u8 { 2 }
 
 #[derive(Resource)]
 struct WorldBounds {
@@ -147,9 +179,9 @@ fn setup(mut commands: Commands) {
 
 fn player_input_system(
     keyboard: Res<ButtonInput<KeyCode>>,
-    mut q_player: Query<(&mut Velocity, &Transform), With<Player>>,
+    q_player: Query<(&Velocity, &Transform), With<Player>>,
 ) {
-    if let Ok((mut vel, _transform)) = q_player.get_single_mut() {
+    if let Ok((_vel, _transform)) = q_player.get_single() {
         // Physics system reads input and applies acceleration/deceleration.
         // Keep here in case we later want to add air control modifiers etc.
         let _left = keyboard.any_pressed([KeyCode::KeyA, KeyCode::ArrowLeft]);
@@ -233,11 +265,15 @@ fn physics_and_collision_system(
             }
         }
 
-        // Jumping: start on press when grounded
-        if grounded && keyboard.just_pressed(KeyCode::Space) {
-            v.y = cfg.jump.velocity;
-            jump.jumping = true;
-            jump.hold_ms = 0.0;
+        // Jumping: allow double jump up to max_jumps
+        if keyboard.just_pressed(KeyCode::Space) {
+            let can_jump = if grounded { true } else { jump.jumps_used < cfg.jump.max_jumps };
+            if can_jump {
+                v.y = cfg.jump.velocity;
+                jump.jumping = true;
+                jump.hold_ms = 0.0;
+                if grounded { jump.jumps_used = 1; } else { jump.jumps_used = (jump.jumps_used + 1).min(cfg.jump.max_jumps); }
+            }
         }
         // Track hold time while rising
         if jump.jumping && keyboard.pressed(KeyCode::Space) && v.y > 0.0 {
@@ -254,6 +290,7 @@ fn physics_and_collision_system(
         if grounded && v.y.abs() < f32::EPSILON {
             jump.jumping = false;
             jump.hold_ms = 0.0;
+            jump.jumps_used = 0;
         }
 
         // Keep player within world bounds horizontally
@@ -262,12 +299,48 @@ fn physics_and_collision_system(
 }
 
 fn camera_follow_system(
+    time: Res<Time>,
+    cfg: Res<GameConfig>,
+    windows: Query<&Window>,
     mut q_camera: Query<&mut Transform, (With<Camera>, Without<Player>)>,
-    q_player: Query<&Transform, With<Player>>,
+    q_player: Query<(&Transform, &Velocity), With<Player>>,
 ) {
-    if let (Ok(mut cam_t), Ok(player_t)) = (q_camera.get_single_mut(), q_player.get_single()) {
-        // Follow player's x, keep y fixed for simplicity
-        cam_t.translation.x = player_t.translation.x;
+    if let (Ok(mut cam_t), Ok((player_t, player_vel))) = (q_camera.get_single_mut(), q_player.get_single()) {
+        // Target with velocity lookahead
+        let target_x = player_t.translation.x + player_vel.x * cfg.camera.lookahead_s;
+        let target_y = player_t.translation.y + player_vel.y * (cfg.camera.lookahead_s * 0.6);
+
+        // Exponential smoothing toward target using lag time constant
+        let lag = cfg.camera.lag_s.max(0.0001);
+        let alpha = 1.0 - (-time.delta_seconds() / lag).exp();
+        cam_t.translation.x += (target_x - cam_t.translation.x) * alpha;
+        cam_t.translation.y += (target_y - cam_t.translation.y) * alpha;
+
+        // Subtle human-like noise (breathing/inaccuracies) on X and slight Y
+        let t = time.elapsed_seconds();
+        let f1 = cfg.camera.noise_freq_hz.max(0.01);
+        let f2 = f1 * 0.73;
+        let amp_x = cfg.camera.noise_amp_x.unwrap_or(cfg.camera.noise_amp);
+        let amp_y = cfg.camera.noise_amp_y.unwrap_or(cfg.camera.noise_amp);
+
+        // Clamp baseline Y before noise so positive phase isn't truncated as often
+        let window_h = windows.get_single().map(|w| w.height()).unwrap_or(540.0);
+        let half_h = window_h * 0.5;
+        let margin = 40.0; // pixels, small ground margin
+        let max_cam_y = GROUND_Y + half_h - margin;
+        let allowed_max = max_cam_y - amp_y; // leave headroom for noise
+        cam_t.translation.y = cam_t.translation.y.min(allowed_max);
+
+        // Subtle human-like noise on X and Y with equal structure
+        let nx = (t * std::f32::consts::TAU * f1).sin() * 0.5 * amp_x
+            + (t * std::f32::consts::TAU * f2).cos() * 0.5 * amp_x;
+        let ny = (t * std::f32::consts::TAU * (f1 * 0.33)).sin() * 0.5 * amp_y
+            + (t * std::f32::consts::TAU * (f2 * 0.47)).cos() * 0.5 * amp_y;
+        cam_t.translation.x += nx;
+        cam_t.translation.y += ny;
+
+        // Final safety clamp to keep the ground visible
+        cam_t.translation.y = cam_t.translation.y.min(max_cam_y);
     }
 }
 

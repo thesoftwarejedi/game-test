@@ -5,11 +5,11 @@ value = 300.0
 
 [acceleration]
 # Rate moving toward target speed when holding A/D (pixels/sec^2)
-value = 2000.0
+value = 1500.0
 
 [deceleration]
 # Rate slowing to a stop when no input (pixels/sec^2)
-value = 1800.0
+value = 800.0
 
 [gravity]
 # Downward acceleration (pixels/sec^2)
@@ -23,3 +23,19 @@ max_hold_ms = 180.0
 # When releasing Space early (before max_hold_ms), vertical velocity is scaled by this factor
 # Smaller = shorter tap jumps
 cut_factor = 0.5
+# Number of jumps allowed before touching ground again
+max_jumps = 2
+
+# Camera behavior
+[camera]
+# Smoothing lag time constant (seconds). Higher = more delay/inertia
+lag_s = 1
+# Velocity lookahead (seconds). Camera leads the player based on speed
+lookahead_s = 2
+# Subtle human-like noise amplitude (pixels)
+noise_amp = 0.1
+# Optionally override per-axis amplitudes; if not set, fall back to noise_amp
+# noise_amp_x = 2.0
+# noise_amp_y = 2.0
+# Base frequency of noise (Hz)
+noise_freq_hz = 0.1
