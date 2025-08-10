@@ -30,17 +30,20 @@ fn main() {
         .insert_resource(LevelRequest::default())
         .insert_resource(Lives { current: 3, max: 3 })
         .insert_resource(GameState::Running)
+        .add_event::<systems::particles::JumpBurstEvent>()
         .add_systems(Startup, systems::startup::setup)
         .add_systems(Update, (
             systems::player::player_input_system,
             systems::player::physics_and_collision_system,
             systems::camera::camera_follow_system,
+            systems::ui::game_over_restart_system,
             systems::levels::exit_detection_system,
             systems::levels::level_transition_system,
             systems::player::apply_pending_start_system,
             systems::player::death_check_system,
             systems::ui::update_lives_ui_system,
-            systems::ui::game_over_restart_system,
+            systems::particles::spawn_burst_on_event,
+            systems::particles::update_particles,
         ))
         .run();
 }

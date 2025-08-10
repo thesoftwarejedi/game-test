@@ -107,12 +107,18 @@ pub fn game_over_restart_system(
     level_start: Option<Res<LevelStart>>,
     mut level_req: ResMut<LevelRequest>,
     level_mgr: Res<LevelManager>,
+    mut commands: Commands,
+    q_level_entities: Query<Entity, With<crate::components::LevelEntity>>,
 ) {
     if *state != GameState::GameOver { return; }
     if keyboard.just_pressed(KeyCode::Space) {
         lives.current = lives.max;
         *state = GameState::Running;
         if let Ok(mut vis) = q_over.get_single_mut() { *vis = Visibility::Hidden; }
+        // Proactively clear existing level entities to ensure a visible reset
+        for e in q_level_entities.iter() {
+            commands.entity(e).despawn_recursive();
+        }
         level_req.0 = Some(level_mgr.current.clone());
         let start = level_start.as_ref().map(|s| s.0).unwrap_or(Vec2::ZERO);
         pending.0 = Some(start);

@@ -3,6 +3,7 @@ use bevy::prelude::*;
 use crate::components::{JumpState, Player, Velocity};
 use crate::config::GameConfig;
 use crate::resources::{GameState, LevelStart, PendingStart, PLAYER_SIZE};
+use crate::systems::particles::JumpBurstEvent;
 
 pub fn player_input_system(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -20,6 +21,7 @@ pub fn physics_and_collision_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut q_player: Query<(&mut Transform, &mut Velocity, &mut JumpState), With<Player>>,
     q_ground: Query<(&Transform, &Sprite), (With<crate::components::Ground>, Without<Player>)>,
+    mut ev_burst: EventWriter<JumpBurstEvent>,
 ) {
     let dt = time.delta_seconds();
 
@@ -59,16 +61,27 @@ pub fn physics_and_collision_system(
             let pen_y = player_half.y + ground_half.y - dy;
 
             if pen_x > 0.0 && pen_y > 0.0 {
+                // One-way platforms: ignore collisions when coming from below while moving upward
+                let player_bottom = py - player_half.y;
+                let ground_top = gy + ground_half.y;
+                if player_bottom < ground_top && v.y > 0.0 {
+                    // Allow the player to pass through from below
+                    continue;
+                }
+
                 if pen_y < pen_x {
                     if py > gy {
+                        // Land on top
                         t.translation.y = gy + ground_half.y + player_half.y;
                         v.y = 0.0;
                         grounded = true;
                     } else {
-                        t.translation.y = gy - ground_half.y - player_half.y;
-                        if v.y > 0.0 { v.y = 0.0; }
+                        // Coming from below: do not push the player down (already handled by pass-through logic)
+                        // If we ever reach here (e.g., v.y <= 0), avoid bumping head
+                        continue;
                     }
                 } else {
+                    // Horizontal resolution
                     if px > gx {
                         t.translation.x = gx + ground_half.x + player_half.x;
                     } else {
@@ -86,7 +99,15 @@ pub fn physics_and_collision_system(
                 v.y = cfg.jump.velocity;
                 jump.jumping = true;
                 jump.hold_ms = 0.0;
-                if grounded { jump.jumps_used = 1; } else { jump.jumps_used = (jump.jumps_used + 1).min(cfg.jump.max_jumps); }
+                if grounded {
+                    jump.jumps_used = 1;
+                } else {
+                    jump.jumps_used = (jump.jumps_used + 1).min(cfg.jump.max_jumps);
+                }
+                // Emit burst event for multi-jumps (second jump or higher)
+                if jump.jumps_used >= 2 {
+                    ev_burst.send(JumpBurstEvent { pos: Vec2::new(t.translation.x, t.translation.y) });
+                }
             }
         }
         // Track hold time while rising
