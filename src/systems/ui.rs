@@ -119,7 +119,7 @@ pub fn game_over_restart_system(
         for e in q_level_entities.iter() {
             commands.entity(e).despawn_recursive();
         }
-        level_req.0 = Some(level_mgr.current.clone());
+        level_req.0 = Some("level1".to_string());
         let start = level_start.as_ref().map(|s| s.0).unwrap_or(Vec2::ZERO);
         pending.0 = Some(start);
     }
