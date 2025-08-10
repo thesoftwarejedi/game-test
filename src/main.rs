@@ -32,20 +32,24 @@ fn main() {
         .insert_resource(GameState::Running)
         .add_event::<systems::particles::JumpBurstEvent>()
         .add_event::<systems::particles::DirtKickEvent>()
-        .add_systems(Startup, systems::startup::setup)
+        .add_systems(Startup, (
+            systems::startup::setup,
+            systems::background::setup_parallax_background,
+        ))
         .add_systems(Update, (
             systems::player::player_input_system,
             systems::player::physics_and_collision_system,
-            systems::camera::camera_follow_system,
-            systems::ui::game_over_restart_system,
-            systems::levels::exit_detection_system,
             systems::levels::level_transition_system,
-            systems::player::apply_pending_start_system,
+            systems::camera::camera_follow_system,
+            systems::background::update_parallax_background,
             systems::player::death_check_system,
             systems::ui::update_lives_ui_system,
             systems::particles::spawn_burst_on_event,
             systems::particles::spawn_dirt_on_event,
             systems::particles::update_particles,
+            systems::ui::game_over_restart_system,
+            systems::levels::exit_detection_system,
+            systems::player::apply_pending_start_system,
         ))
         .run();
 }
