@@ -31,6 +31,7 @@ fn main() {
         .insert_resource(Lives { current: 3, max: 3 })
         .insert_resource(GameState::Running)
         .add_event::<systems::particles::JumpBurstEvent>()
+        .add_event::<systems::particles::DirtKickEvent>()
         .add_systems(Startup, systems::startup::setup)
         .add_systems(Update, (
             systems::player::player_input_system,
@@ -43,6 +44,7 @@ fn main() {
             systems::player::death_check_system,
             systems::ui::update_lives_ui_system,
             systems::particles::spawn_burst_on_event,
+            systems::particles::spawn_dirt_on_event,
             systems::particles::update_particles,
         ))
         .run();

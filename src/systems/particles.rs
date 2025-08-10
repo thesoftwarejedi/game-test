@@ -9,6 +9,46 @@ pub struct JumpBurstEvent {
     pub kind: BurstKind,
 }
 
+// Direction-change dirt kick event
+#[derive(Event, Debug, Clone, Copy)]
+pub struct DirtKickEvent {
+    pub pos: Vec2,
+    // dir is the direction the player is starting to move (kick should fling opposite)
+    pub dir: f32, // -1.0 left, 1.0 right
+}
+
+pub fn spawn_dirt_on_event(
+    mut commands: Commands,
+    mut reader: EventReader<DirtKickEvent>,
+) {
+    for ev in reader.read() {
+        let base_z = 0.55;
+        let n = 28usize;
+        let kick_dir = -ev.dir.signum(); // fling opposite of new movement
+        let mut seed = (ev.pos.x.to_bits() ^ ev.pos.y.to_bits()) as u64;
+        for i in 0..n {
+            // xorshift
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            let rf = |s: u32| (((((seed >> s) as u32) & 0xFFFF) as f32) / 65535.0) * 2.0 - 1.0;
+            let spread = 0.9; // allow farther x fling
+            let vx = (kick_dir * (160.0 + (i as f32 % 9.0) * 22.0)) + rf(i as u32 % 8) * 70.0 * spread;
+            let vy = 190.0 + rf(((i as u32)+3) % 8) * 60.0; // strong upward launch
+            let size = 1.8 + (i % 3) as f32;
+            let life = 0.34 + (i as f32 % 7.0) * 0.028; // fade before falling back down
+            commands.spawn((
+                SpriteBundle {
+                    sprite: Sprite { color: Color::srgb(0.35, 0.25, 0.15), custom_size: Some(Vec2::splat(size)), ..default() },
+                    transform: Transform::from_xyz(ev.pos.x, ev.pos.y - PLAYER_SIZE.y * 0.5, base_z),
+                    ..default()
+                },
+                Particle { vel: Vec2::new(vx, vy), life, max_life: life },
+            ));
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum BurstKind { Normal, Bonus }
 

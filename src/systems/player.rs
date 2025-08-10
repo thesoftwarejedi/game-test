@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::components::{JumpState, Player, Velocity};
 use crate::config::GameConfig;
 use crate::resources::{GameState, LevelStart, PendingStart, PLAYER_SIZE};
-use crate::systems::particles::{JumpBurstEvent, BurstKind};
+use crate::systems::particles::{JumpBurstEvent, BurstKind, DirtKickEvent};
 
 pub fn player_input_system(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -22,6 +22,7 @@ pub fn physics_and_collision_system(
     mut q_player: Query<(&mut Transform, &mut Velocity, &mut JumpState), With<Player>>,
     q_ground: Query<(&Transform, &Sprite), (With<crate::components::Ground>, Without<Player>)>,
     mut ev_burst: EventWriter<JumpBurstEvent>,
+    mut ev_dirt: EventWriter<DirtKickEvent>,
 ) {
     let dt = time.delta_seconds();
 
@@ -31,6 +32,7 @@ pub fn physics_and_collision_system(
         if keyboard.any_pressed([KeyCode::KeyD, KeyCode::ArrowRight]) { input_dir += 1.0; }
 
         let target_speed = input_dir * cfg.max_speed.value;
+        let prev_vx = v.x;
         if input_dir.abs() > 0.0 {
             v.x = approach(v.x, target_speed, cfg.acceleration.value * dt);
         } else {
@@ -89,6 +91,15 @@ pub fn physics_and_collision_system(
                     }
                     v.x = 0.0;
                 }
+            }
+        }
+
+        // Dirt kick: emit when reversing direction on ground
+        if grounded && input_dir.abs() > 0.0 {
+            let new_dir = input_dir.signum();
+            let old_dir = prev_vx.signum();
+            if old_dir != 0.0 && new_dir != 0.0 && old_dir != new_dir && prev_vx.abs() > 30.0 {
+                ev_dirt.send(DirtKickEvent { pos: Vec2::new(t.translation.x, t.translation.y), dir: new_dir });
             }
         }
 
