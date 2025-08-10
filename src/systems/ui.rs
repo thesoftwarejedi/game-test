@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::components::{GameOverUi, HeartSlot, LivesUi};
-use crate::resources::{GameState, LevelManager, LevelRequest, LevelStart, Lives, PendingStart};
+use crate::resources::{GameState, LevelRequest, LevelStart, Lives, PendingStart};
 
 pub fn setup_ui(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Lives hearts container
@@ -106,7 +106,6 @@ pub fn game_over_restart_system(
     mut pending: ResMut<PendingStart>,
     level_start: Option<Res<LevelStart>>,
     mut level_req: ResMut<LevelRequest>,
-    level_mgr: Res<LevelManager>,
     mut commands: Commands,
     q_level_entities: Query<Entity, With<crate::components::LevelEntity>>,
 ) {

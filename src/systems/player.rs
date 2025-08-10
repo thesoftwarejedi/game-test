@@ -3,7 +3,7 @@ use bevy::prelude::*;
 use crate::components::{JumpState, Player, Velocity};
 use crate::config::GameConfig;
 use crate::resources::{GameState, LevelStart, PendingStart, PLAYER_SIZE};
-use crate::systems::particles::JumpBurstEvent;
+use crate::systems::particles::{JumpBurstEvent, BurstKind};
 
 pub fn player_input_system(
     keyboard: Res<ButtonInput<KeyCode>>,
@@ -104,9 +104,30 @@ pub fn physics_and_collision_system(
                 } else {
                     jump.jumps_used = (jump.jumps_used + 1).min(cfg.jump.max_jumps);
                 }
-                // Emit burst event for multi-jumps (second jump or higher)
+                // 10% chance to grant an extra jump: refund one usage
+                let mut bonus_triggered = false;
+                {
+                    // simple hash-based RNG without external crates
+                    let tbits = (time.elapsed_seconds() * 1_000_000.0) as u32;
+                    let xb = t.translation.x.to_bits();
+                    let yb = t.translation.y.to_bits();
+                    let mut h = xb ^ yb ^ tbits ^ (jump.jumps_used as u32);
+                    // xorshift
+                    h ^= h << 13;
+                    h ^= h >> 17;
+                    h ^= h << 5;
+                    let r01 = (h as f32 / u32::MAX as f32).clamp(0.0, 1.0);
+                    if r01 < 0.10 && jump.jumps_used > 1 {
+                        jump.jumps_used -= 1; // refund one, effectively adding an extra jump
+                        bonus_triggered = true;
+                    }
+                }
+                // Emit burst event(s)
+                if bonus_triggered {
+                    ev_burst.send(JumpBurstEvent { pos: Vec2::new(t.translation.x, t.translation.y), kind: BurstKind::Bonus });
+                }
                 if jump.jumps_used >= 2 {
-                    ev_burst.send(JumpBurstEvent { pos: Vec2::new(t.translation.x, t.translation.y) });
+                    ev_burst.send(JumpBurstEvent { pos: Vec2::new(t.translation.x, t.translation.y), kind: BurstKind::Normal });
                 }
             }
         }

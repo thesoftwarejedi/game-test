@@ -2,11 +2,15 @@ use bevy::prelude::*;
 
 use crate::resources::PLAYER_SIZE;
 
-// Event fired when player performs a multi-jump (>= 2nd jump)
+// Event fired when player performs a burst. kind distinguishes normal vs bonus.
 #[derive(Event, Debug, Clone, Copy)]
 pub struct JumpBurstEvent {
     pub pos: Vec2,
+    pub kind: BurstKind,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum BurstKind { Normal, Bonus }
 
 // Components for transient VFX
 #[derive(Component)]
@@ -27,24 +31,47 @@ pub fn spawn_burst_on_event(
 ) {
     for ev in reader.read() {
         let base_z = 0.6;
+        // Parameters vary by kind
+        let (platform_color, platform_life, n, particle_color_base, speed_base, speed_var, up_bias, sparkle_bonus) = match ev.kind {
+            BurstKind::Normal => (
+                Color::srgb(0.95, 0.95, 1.0),
+                0.15,
+                60usize,
+                Color::srgb(0.95, 0.9, 0.75),
+                140.0,
+                12.0,
+                120.0,
+                false,
+            ),
+            BurstKind::Bonus => (
+                Color::srgb(1.0, 0.95, 0.4),
+                0.12,
+                120usize,
+                Color::srgb(1.0, 0.95, 0.6),
+                200.0,
+                24.0,
+                180.0,
+                true,
+            ),
+        };
+
         // Thin ephemeral platform under feet
-        let width = PLAYER_SIZE.x * 0.9;
-        let height = 6.0;
+        let width = PLAYER_SIZE.x * 0.95;
+        let height = if matches!(ev.kind, BurstKind::Bonus) { 8.0 } else { 6.0 };
         commands.spawn((
             SpriteBundle {
                 sprite: Sprite {
-                    color: Color::srgb(0.95, 0.95, 1.0),
+                    color: platform_color,
                     custom_size: Some(Vec2::new(width, height)),
                     ..default()
                 },
                 transform: Transform::from_xyz(ev.pos.x, ev.pos.y - PLAYER_SIZE.y * 0.5, base_z),
                 ..default()
             },
-            ShatterPlatform { life: 0.15 },
+            ShatterPlatform { life: platform_life },
         ));
 
-        // Shatter into many small particles (sand-like)
-        let n = 60usize;
+        // Shatter into many small particles
         let mut rng_seed = (ev.pos.x.to_bits() ^ ev.pos.y.to_bits()) as u64;
         for i in 0..n {
             // simple xorshift for determinism without rand crate
@@ -53,22 +80,42 @@ pub fn spawn_burst_on_event(
             rng_seed ^= rng_seed << 17;
             let rf = |s: u32| (((((rng_seed >> s) as u32) & 0xFFFF) as f32) / 65535.0) * 2.0 - 1.0;
             let dir = Vec2::new(rf((i as u32) % 8), rf(((i as u32)+3) % 8)).normalize_or_zero();
-            let speed = 140.0 + (i as f32 % 17.0) * 12.0;
-            let vel = dir * speed + Vec2::new(0.0, 120.0);
-            let size = 2.0 + (i % 3) as f32;
-            let life = 0.6 + (i as f32 % 11.0) * 0.02;
+            let speed = speed_base + (i as f32 % 17.0) * speed_var;
+            let vel = dir * speed + Vec2::new(0.0, up_bias);
+            let size = if sparkle_bonus { 1.5 + (i % 4) as f32 } else { 2.0 + (i % 3) as f32 };
+            let life = if sparkle_bonus { 0.5 + (i as f32 % 11.0) * 0.018 } else { 0.6 + (i as f32 % 11.0) * 0.02 };
+            let mut color = particle_color_base;
+            if sparkle_bonus {
+                // randomize hue/alpha a bit for sparkly look
+                let a = 0.8 + ((i % 5) as f32) * 0.04;
+                color = color.with_alpha(a.min(1.0));
+            }
             commands.spawn((
                 SpriteBundle {
-                    sprite: Sprite {
-                        color: Color::srgb(0.95, 0.9, 0.75),
-                        custom_size: Some(Vec2::splat(size)),
-                        ..default()
-                    },
+                    sprite: Sprite { color, custom_size: Some(Vec2::splat(size)), ..default() },
                     transform: Transform::from_xyz(ev.pos.x, ev.pos.y - PLAYER_SIZE.y * 0.5, base_z + 0.01),
                     ..default()
                 },
                 Particle { vel, life, max_life: life },
             ));
+        }
+
+        if sparkle_bonus {
+            // Extra outward ring for bonus burst
+            let ring = 24usize;
+            for i in 0..ring {
+                let ang = (i as f32 / ring as f32) * std::f32::consts::TAU;
+                let dir = Vec2::new(ang.cos(), ang.sin());
+                let vel = dir * (speed_base + 90.0);
+                commands.spawn((
+                    SpriteBundle {
+                        sprite: Sprite { color: Color::srgb(1.0, 0.8, 0.2), custom_size: Some(Vec2::splat(3.0)), ..default() },
+                        transform: Transform::from_xyz(ev.pos.x, ev.pos.y - PLAYER_SIZE.y * 0.5, base_z + 0.02),
+                        ..default()
+                    },
+                    Particle { vel, life: 0.45, max_life: 0.45 },
+                ));
+            }
         }
     }
 }
