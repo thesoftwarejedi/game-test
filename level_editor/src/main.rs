@@ -9,6 +9,33 @@ struct Camera {
     zoom: f32,
 }
 
+fn draw_axes(painter: &egui::Painter, rect: Rect, cam: &Camera) {
+    // World axes through origin
+    let stroke_x = Stroke { width: 2.0, color: Color32::from_rgb(200, 80, 80) };
+    let stroke_y = Stroke { width: 2.0, color: Color32::from_rgb(80, 200, 80) };
+    // Choose a span based on current view
+    let cam_min = panel_to_cam(vec2(0.0, 0.0), rect);
+    let cam_max = panel_to_cam(rect.size(), rect);
+    let wmin = cam.screen_to_world(cam_min);
+    let wmax = cam.screen_to_world(cam_max);
+    // Horizontal (X axis, y=0)
+    {
+        let a_cam = cam.world_to_screen(vec2(wmin.x, 0.0));
+        let b_cam = cam.world_to_screen(vec2(wmax.x, 0.0));
+        let a = rect.min + cam_to_panel(a_cam, rect);
+        let b = rect.min + cam_to_panel(b_cam, rect);
+        painter.line_segment([a, b], stroke_x);
+    }
+    // Vertical (Y axis, x=0)
+    {
+        let a_cam = cam.world_to_screen(vec2(0.0, wmin.y));
+        let b_cam = cam.world_to_screen(vec2(0.0, wmax.y));
+        let a = rect.min + cam_to_panel(a_cam, rect);
+        let b = rect.min + cam_to_panel(b_cam, rect);
+        painter.line_segment([a, b], stroke_y);
+    }
+}
+
 // Convert between our camera screen (origin bottom-left of viewport with Y up)
 // and egui panel coordinates (origin top-left with Y down).
 fn cam_to_panel(screen_cam: Vec2, viewport: Rect) -> Vec2 {
@@ -26,7 +53,8 @@ fn draw_rect_center_stroked(painter: &egui::Painter, rect: Rect, cam: &Camera, r
     let b_cam = cam.world_to_screen(max);
     let a = cam_to_panel(a_cam, rect);
     let b = cam_to_panel(b_cam, rect);
-    let rr = Rect::from_min_max(rect.min + a, rect.min + b);
+    // Use from_two_pos to handle inverted Y after panel conversion
+    let rr = Rect::from_two_pos(rect.min + a, rect.min + b);
     painter.rect(rr, Rounding::ZERO, Color32::TRANSPARENT, Stroke { width, color });
 }
 
@@ -68,8 +96,8 @@ impl ResizeState {
         let min = vec2(self.anchor_world.x.min(drag_world.x), self.anchor_world.y.min(drag_world.y));
         let max = vec2(self.anchor_world.x.max(drag_world.x), self.anchor_world.y.max(drag_world.y));
         let center = (min + max) * 0.5;
-        let mut w = (max.x - min.x).max(1.0);
-        let mut h = (max.y - min.y).max(1.0);
+        let w = (max.x - min.x).max(1.0);
+        let h = (max.y - min.y).max(1.0);
         match self.kind {
             ItemKind::Platform => {
                 if let Some(r) = level.platforms.get_mut(self.idx) { r.x = center.x; r.y = center.y; r.w = w; r.h = h; }
@@ -111,7 +139,7 @@ fn hit_test_handles(level: &Level, cam: &Camera, viewport: Rect, world: Vec2) ->
     };
 
     // Helper to iterate corners
-    let mut check_rect = |x: f32, y: f32, w: f32, h: f32| -> Option<Handle> {
+    let check_rect = |x: f32, y: f32, w: f32, h: f32| -> Option<Handle> {
         let half = vec2(w * 0.5, h * 0.5);
         let min = vec2(x, y) - half;
         let max = vec2(x, y) + half;
@@ -137,12 +165,12 @@ fn hit_test_handles(level: &Level, cam: &Camera, viewport: Rect, world: Vec2) ->
 
 impl Camera {
     fn world_to_screen(&self, world: Vec2) -> Vec2 {
-        let s = (world - self.offset) * self.zoom;
-        vec2(s.x, -s.y)
+        // Camera space with +Y up
+        (world - self.offset) * self.zoom
     }
     fn screen_to_world(&self, screen: Vec2) -> Vec2 {
-        let w = vec2(screen.x, -screen.y) / self.zoom;
-        w + self.offset
+        // From camera space (+Y up) back to world
+        screen / self.zoom + self.offset
     }
 }
 
@@ -217,6 +245,9 @@ impl eframe::App for EditorApp {
                         }
                     }
                 }
+                if ui.button("Frame").on_hover_text("Fit content to view").clicked() {
+                    self.needs_frame = true;
+                }
                 if ui.button("Save").clicked() {
                     if let Some(level) = &self.level {
                         // Enforce start exists (always present in model). Additional guard in case of None level.
@@ -286,54 +317,46 @@ impl eframe::App for EditorApp {
             let available = ui.available_rect_before_wrap();
             let painter = ui.painter_at(available);
 
-            let response = ui.allocate_rect(available, egui::Sense::drag());
+            // Capture both click and drag so selection clicks register
+            let response = ui.allocate_rect(available, egui::Sense::click_and_drag());
 
             // Auto-frame content after loading/new once we know viewport size
             if self.needs_frame {
                 if let Some(level) = &self.level {
-                    if !level.platforms.is_empty() || !level.exits.is_empty() {
-                        let mut min_w = vec2(level.start.x, level.start.y);
-                        let mut max_w = min_w;
-                        for r in &level.platforms {
-                            let half = vec2(r.w * 0.5, r.h * 0.5);
-                            let rmin = vec2(r.x, r.y) - half;
-                            let rmax = vec2(r.x, r.y) + half;
-                            min_w.x = min_w.x.min(rmin.x); min_w.y = min_w.y.min(rmin.y);
-                            max_w.x = max_w.x.max(rmax.x); max_w.y = max_w.y.max(rmax.y);
-                        }
-                        for e in &level.exits {
-                            let half = vec2(e.w * 0.5, e.h * 0.5);
-                            let rmin = vec2(e.x, e.y) - half;
-                            let rmax = vec2(e.x, e.y) + half;
-                            min_w.x = min_w.x.min(rmin.x); min_w.y = min_w.y.min(rmin.y);
-                            max_w.x = max_w.x.max(rmax.x); max_w.y = max_w.y.max(rmax.y);
-                        }
-                        let content_size = max_w - min_w;
+                    // Compute bounds across platforms and exits
+                    let mut min_w = vec2(f32::INFINITY, f32::INFINITY);
+                    let mut max_w = vec2(f32::NEG_INFINITY, f32::NEG_INFINITY);
+                    for r in &level.platforms {
+                        let half = vec2(r.w * 0.5, r.h * 0.5);
+                        let rmin = vec2(r.x, r.y) - half;
+                        let rmax = vec2(r.x, r.y) + half;
+                        min_w.x = min_w.x.min(rmin.x); min_w.y = min_w.y.min(rmin.y);
+                        max_w.x = max_w.x.max(rmax.x); max_w.y = max_w.y.max(rmax.y);
+                    }
+                    for e in &level.exits {
+                        let half = vec2(e.w * 0.5, e.h * 0.5);
+                        let rmin = vec2(e.x, e.y) - half;
+                        let rmax = vec2(e.x, e.y) + half;
+                        min_w.x = min_w.x.min(rmin.x); min_w.y = min_w.y.min(rmin.y);
+                        max_w.x = max_w.x.max(rmax.x); max_w.y = max_w.y.max(rmax.y);
+                    }
+                    let have_any = min_w.x.is_finite();
+                    let viewport_size = available.size();
+                    if have_any {
+                        let content_size = (max_w - min_w).max(vec2(1.0, 1.0));
                         let pad = 20.0;
-                        let viewport_size = available.size();
-                        // compute zoom to fit
-                        let zx = (viewport_size.x - pad * 2.0) / content_size.x.max(1.0);
-                        let zy = (viewport_size.y - pad * 2.0) / content_size.y.max(1.0);
+                        let zx = (viewport_size.x - pad * 2.0) / content_size.x;
+                        let zy = (viewport_size.y - pad * 2.0) / content_size.y;
                         self.camera.zoom = zx.min(zy).clamp(0.05, 10.0);
-                        // center content
                         let center_w = (min_w + max_w) * 0.5;
-                        // We want center to appear at viewport center in camera coords
-                        let viewport_center_panel = viewport_size * 0.5;
-                        let viewport_center_cam = panel_to_cam(viewport_center_panel, available);
-                        // offset satisfies world_to_screen(center_w) == viewport_center_cam
-                        // world_to_screen: (w - offset) * zoom -> flip Y included
-                        // Solve for offset: (center_w - offset) * zoom == viewport_center_cam
+                        let viewport_center_cam = panel_to_cam(viewport_size * 0.5, available);
                         self.camera.offset = center_w - viewport_center_cam / self.camera.zoom;
                     } else {
-                        // No content: just center start at viewport center
-                        let viewport_center_panel = available.size() * 0.5;
-                        let viewport_center_cam = panel_to_cam(viewport_center_panel, available);
-                        if let Some(level) = self.level.as_mut() {
-                            let w = self.camera.screen_to_world(viewport_center_cam);
-                            level.start.x = w.x; level.start.y = w.y;
-                        }
+                        // No platforms/exits; center on start
+                        let center_w = vec2(level.start.x, level.start.y);
                         self.camera.zoom = 1.0;
-                        self.camera.offset = vec2(0.0, 0.0);
+                        let viewport_center_cam = panel_to_cam(viewport_size * 0.5, available);
+                        self.camera.offset = center_w - viewport_center_cam / self.camera.zoom;
                     }
                 }
                 self.needs_frame = false;
@@ -345,9 +368,11 @@ impl eframe::App for EditorApp {
                 || input.pointer.middle_down()
                 || input.key_down(egui::Key::Space);
             if panning_now && response.dragged() {
-                let delta = response.drag_delta();
-                // Adjust offset so content follows drag (account for flipped Y)
-                self.camera.offset += vec2(-delta.x, delta.y) / self.camera.zoom;
+                let delta_panel = response.drag_delta();
+                // Convert panel delta (Y down) to camera delta (Y up)
+                let delta_cam = vec2(delta_panel.x, -delta_panel.y);
+                // Pan so content follows the cursor (hand tool)
+                self.camera.offset -= delta_cam / self.camera.zoom;
             }
 
             // Input: zoom with scroll, anchor at mouse position
@@ -361,9 +386,11 @@ impl eframe::App for EditorApp {
                 self.camera.zoom = (self.camera.zoom * zoom_factor).clamp(0.05, 10.0);
                 let post_cam = self.camera.world_to_screen(pre_world);
                 let post_panel = cam_to_panel(post_cam, available);
-                let screen_delta = mouse_panel - post_panel;
-                // keep cursor anchored while zooming (account for flipped Y)
-                self.camera.offset += vec2(-screen_delta.x, screen_delta.y) / self.camera.zoom;
+                let screen_delta_panel = mouse_panel - post_panel;
+                // Convert to camera-space delta
+                let screen_delta_cam = vec2(screen_delta_panel.x, -screen_delta_panel.y);
+                // Adjust offset so the same world point stays under the cursor
+                self.camera.offset += -screen_delta_cam / self.camera.zoom;
             }
 
             // Draw background
@@ -372,11 +399,14 @@ impl eframe::App for EditorApp {
             // Draw grid
             draw_grid(&painter, available, &self.camera, self.snap_size);
 
+            // Draw world axes lines through origin for orientation
+            draw_axes(&painter, available, &self.camera);
+
             // Draw level geometry
             if let Some(level) = &self.level {
                 // Platforms
                 for (i, r) in level.platforms.iter().enumerate() {
-                    let mut color = Color32::from_rgb(80, 160, 255);
+                    let color = Color32::from_rgb(80, 160, 255);
                     let selected = matches!(self.selection, Selection::Item(ItemKind::Platform, si) if si == i);
                     let stroke_w = if selected { 3.0 } else { 2.0 };
                     draw_rect_center_stroked(&painter, available, &self.camera, *r, color, stroke_w);
@@ -432,7 +462,7 @@ impl eframe::App for EditorApp {
                 match self.tool {
                     Tool::Select => {
                         // Simple: click on rect to select, drag to move, handles to resize
-                        if response.clicked() {
+                        if response.clicked_by(egui::PointerButton::Primary) {
                             let mouse = ui.input(|i| i.pointer.interact_pos()).unwrap_or(available.center());
                             let cam_pt = panel_to_cam(mouse - available.min, available);
                             let world = self.camera.screen_to_world(cam_pt);
@@ -453,8 +483,9 @@ impl eframe::App for EditorApp {
                         // Drag to move selected item
                         if let Selection::Item(kind, idx) = self.selection {
                             if response.dragged() && !is_panning(&ui, &response) && self.resizing.is_none() {
-                                let delta_screen = response.drag_delta();
-                                let mut delta_world = delta_screen / self.camera.zoom;
+                                let delta_panel = response.drag_delta();
+                                // Convert panel-space delta (Y down) to camera/world delta (Y up)
+                                let mut delta_world = vec2(delta_panel.x, -delta_panel.y) / self.camera.zoom;
                                 // Constrain axis with Shift: zero out smaller magnitude
                                 if ui.input(|i| i.modifiers.shift) {
                                     if delta_world.x.abs() > delta_world.y.abs() { delta_world.y = 0.0; } else { delta_world.x = 0.0; }
@@ -594,11 +625,11 @@ enum ItemKind { Platform, Exit }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Selection { None, Item(ItemKind, usize) }
 
-fn is_panning(ui: &egui::Ui, response: &egui::Response) -> bool {
+fn is_panning(ui: &egui::Ui, _response: &egui::Response) -> bool {
     ui.input(|i| i.modifiers.alt) || ui.input(|i| i.pointer.middle_down()) || ui.input(|i| i.key_down(egui::Key::Space))
 }
 
-fn hit_test_level(level: &Level, cam: &Camera, viewport: Rect, world: Vec2) -> Option<(usize, ItemKind)> {
+fn hit_test_level(level: &Level, _cam: &Camera, _viewport: Rect, world: Vec2) -> Option<(usize, ItemKind)> {
     // Prioritize exits (top), then platforms
     for (i, e) in level.exits.iter().enumerate().rev() {
         if point_in_center_rect(world, e.x, e.y, e.w, e.h) { return Some((i, ItemKind::Exit)); }
@@ -621,8 +652,10 @@ fn snap_vec2(p: Vec2, grid: f32) -> Vec2 { vec2(snap_value(p.x, grid), snap_valu
 fn draw_grid(painter: &egui::Painter, rect: Rect, cam: &Camera, grid: f32) {
     let stroke = Stroke { width: 1.0, color: Color32::from_gray(40) };
     // Determine world bounds visible
-    let top_left_world = cam.screen_to_world((rect.min).to_vec2());
-    let bottom_right_world = cam.screen_to_world((rect.max).to_vec2());
+    let cam_min = panel_to_cam(vec2(0.0, 0.0), rect);
+    let cam_max = panel_to_cam(rect.size(), rect);
+    let top_left_world = cam.screen_to_world(cam_min);
+    let bottom_right_world = cam.screen_to_world(cam_max);
     let min_x = top_left_world.x.min(bottom_right_world.x).floor();
     let max_x = top_left_world.x.max(bottom_right_world.x).ceil();
     let min_y = top_left_world.y.min(bottom_right_world.y).floor();
@@ -666,7 +699,7 @@ fn draw_rect_center(painter: &egui::Painter, rect: Rect, cam: &Camera, r: LRect,
     let b_cam = cam.world_to_screen(max);
     let a = cam_to_panel(a_cam, rect);
     let b = cam_to_panel(b_cam, rect);
-    let rr = Rect::from_min_max(rect.min + a, rect.min + b);
+    let rr = Rect::from_two_pos(rect.min + a, rect.min + b);
     painter.rect(rr, Rounding::ZERO, Color32::TRANSPARENT, Stroke { width: 2.0, color });
 }
 
