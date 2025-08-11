@@ -1,25 +1,7 @@
-[package]
-name = "game-test"
-version = "0.1.0"
-edition = "2021"
-
-[dependencies]
-bevy = { version = "0.14", default-features = false, features = [
-  "bevy_winit",
-  "bevy_render",
-  "bevy_core_pipeline",
-  "bevy_sprite",
-  "bevy_ui",
-  "bevy_text",
-  "bevy_asset",
-  "png",
-  "dynamic_linking",
-] }
-serde = { version = "1", features = ["derive"] }
-toml = "0.8"
-
-[profile.dev]
-opt-level = 1
-
-[profile.release]
-opt-level = "s"
+[workspace]
+members = [
+  "game",
+  "level_format",
+  "level_editor",
+]
+resolver = "2"
