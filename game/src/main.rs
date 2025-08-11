@@ -10,6 +10,15 @@ use resources::{GameState, LevelManager, LevelRequest, Lives, PendingStart};
 
 fn main() {
     let cfg = load_config();
+    // Parse optional --level <name-or-path>
+    let mut args = std::env::args().skip(1);
+    let mut level_arg: Option<String> = None;
+    while let Some(a) = args.next() {
+        if a == "--level" {
+            if let Some(v) = args.next() { level_arg = Some(v); }
+            break;
+        }
+    }
 
     App::new()
         .add_plugins(
@@ -26,7 +35,7 @@ fn main() {
         )
         .insert_resource(cfg)
         .insert_resource(PendingStart::default())
-        .insert_resource(LevelManager { current: "level1".to_string() })
+        .insert_resource(LevelManager { current: level_arg.unwrap_or_else(|| "level1".to_string()) })
         .insert_resource(LevelRequest::default())
         .insert_resource(Lives { current: 3, max: 3 })
         .insert_resource(GameState::Running)

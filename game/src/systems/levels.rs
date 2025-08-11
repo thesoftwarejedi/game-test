@@ -67,9 +67,14 @@ pub fn do_load_level(commands: &mut Commands, pending: &mut ResMut<PendingStart>
 }
 
 fn read_level(name: &str) -> Option<LevelDef> {
-    let path = format!("levels/{}.toml", name);
-    let path = Path::new(&path);
-    let content = fs::read_to_string(path).ok()?;
+    // Accept either a bare name (resolved under levels/<name>.toml)
+    // or a direct file path to a .toml level file.
+    let content = if name.ends_with(".toml") || name.contains('/') || name.contains('\\') {
+        fs::read_to_string(name).ok()?
+    } else {
+        let path = format!("levels/{}.toml", name);
+        fs::read_to_string(Path::new(&path)).ok()?
+    };
     toml::from_str::<LevelDef>(&content).ok()
 }
 

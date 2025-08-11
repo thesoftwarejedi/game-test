@@ -228,6 +228,24 @@ impl eframe::App for EditorApp {
                     self.selection = Selection::None;
                     self.needs_frame = true;
                 }
+                if ui.button("Play").on_hover_text("Run game with this level").clicked() {
+                    if let (Some(level), Some(path)) = (&self.level, &self.current_path) {
+                        // Save first to ensure latest edits are on disk
+                        if let Ok(toml) = level.to_toml_string_pretty() {
+                            let _ = std::fs::write(path, toml);
+                        }
+                        // Spawn the game as a child process with --level <path>
+                        let _ = std::process::Command::new("cargo")
+                            .arg("run").arg("-p").arg("game")
+                            .arg("--")
+                            .arg("--level")
+                            .arg(path.to_string_lossy().to_string())
+                            .spawn();
+                        self.status = "Launched game".into();
+                    } else {
+                        self.status = "Open or save the level first to get a path".into();
+                    }
+                }
                 if ui.button("Open").clicked() {
                     if let Some(path) = rfd::FileDialog::new().add_filter("TOML", &["toml"]).pick_file() {
                         match std::fs::read_to_string(&path) {
