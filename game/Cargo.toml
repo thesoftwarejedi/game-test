@@ -29,9 +29,14 @@ bevy = { version = "0.14", default-features = false, features = [
   "bevy_text",
   "bevy_asset",
   "png",
+  "webgl2",
 ] }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 uuid = { version = "1", features = ["rng-getrandom"] }
+gloo-net = { version = "0.5" }
+wasm-bindgen-futures = { version = "0.4" }
+futures-lite = { version = "2" }
+crossbeam-channel = { version = "0.5" }
 
 [profile.dev]
 opt-level = 1

@@ -893,6 +893,7 @@ dependencies = [
  "bevy_input",
  "bevy_log",
  "bevy_math",
+ "bevy_pbr",
  "bevy_ptr",
  "bevy_reflect",
  "bevy_render",
@@ -956,6 +957,33 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "66cf695a264b043f2c4edb92dd5c742e6892180d2b30dac870012d153f8557ea"
 dependencies = [
  "glam",
+]
+
+[[package]]
+name = "bevy_pbr"
+version = "0.14.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4dccaa3c945f19834dcf7cd8eb358236dbf0fc4000dacbc7710564e7856714db"
+dependencies = [
+ "bevy_app",
+ "bevy_asset",
+ "bevy_color",
+ "bevy_core_pipeline",
+ "bevy_derive",
+ "bevy_ecs",
+ "bevy_math",
+ "bevy_reflect",
+ "bevy_render",
+ "bevy_transform",
+ "bevy_utils",
+ "bevy_window",
+ "bitflags 2.9.1",
+ "bytemuck",
+ "fixedbitset 0.5.7",
+ "nonmax",
+ "radsort",
+ "smallvec",
+ "static_assertions",
 ]
 
 [[package]]
@@ -2151,6 +2179,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "fnv"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+
+[[package]]
 name = "foldhash"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2286,11 +2320,15 @@ name = "game"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "crossbeam-channel",
+ "futures-lite 2.6.1",
  "getrandom 0.3.3",
+ "gloo-net",
  "level_format",
  "serde",
  "toml",
  "uuid",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -2360,6 +2398,40 @@ dependencies = [
  "bytemuck",
  "rand",
  "serde",
+]
+
+[[package]]
+name = "gloo-net"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43aaa242d1239a8822c15c645f02166398da4f8b5c4bae795c1f5b44e9eee173"
+dependencies = [
+ "futures-channel",
+ "futures-core",
+ "futures-sink",
+ "gloo-utils",
+ "http",
+ "js-sys",
+ "pin-project",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+]
+
+[[package]]
+name = "gloo-utils"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5555354113b18c547c1d3a98fbf7fb32a9ff4f6fa112ce823a21641a0ba3aa"
+dependencies = [
+ "js-sys",
+ "serde",
+ "serde_json",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -2588,6 +2660,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfa686283ad6dd069f105e5ab091b04c62850d3e4cf5d67debad1933f55023df"
 
 [[package]]
+name = "http"
+version = "0.2.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "601cbb57e577e2f5ef5be8e7b83f0f63994f25aa94d673e54a92d5c516d101f1"
+dependencies = [
+ "bytes",
+ "fnv",
+ "itoa",
+]
+
+[[package]]
 name = "icrate"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2755,6 +2838,12 @@ dependencies = [
  "libc",
  "windows-sys 0.48.0",
 ]
+
+[[package]]
+name = "itoa"
+version = "1.0.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a5f13b858c8d314ee3e8f639011f7ccefe71f97f96e50151fb991f267928e2c"
 
 [[package]]
 name = "jni"
@@ -4027,6 +4116,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
+name = "ryu"
+version = "1.0.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
+
+[[package]]
 name = "same-file"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4084,6 +4179,18 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.104",
+]
+
+[[package]]
+name = "serde_json"
+version = "1.0.142"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "030fedb782600dcbd6f02d479bf0d817ac3bb40d644745b769d6a96bc3afc5a7"
+dependencies = [
+ "itoa",
+ "memchr",
+ "ryu",
+ "serde",
 ]
 
 [[package]]

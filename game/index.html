@@ -4,13 +4,25 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Rust Side Scroller (Web)</title>
-    <!-- Trunk will build the Rust crate to WASM -->
     <link data-trunk rel="rust" data-cargo="../Cargo.toml" data-target="wasm32-unknown-unknown" data-bin="game" />
-    <!-- Copy assets directory into dist -->
     <link data-trunk rel="copy-dir" href="assets" />
+    <link data-trunk rel="copy-dir" href="../levels" data-target-dir="levels" />
     <style>
-      html, body { margin: 0; height: 100%; background: #111; }
-      canvas { display: block; width: 100vw; height: 100vh; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #111;
+      }
+      canvas {
+        display: block;
+        position: fixed;
+        inset: 0;
+        width: 100% !important;
+        height: 100% !important;
+      }
     </style>
   </head>
   <body>

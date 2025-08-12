@@ -7,6 +7,8 @@ mod systems;
 
 use config::load_config;
 use resources::{GameState, LevelManager, LevelRequest, Lives, PendingStart};
+#[cfg(target_arch = "wasm32")]
+use crate::systems::levels::poll_wasm_level_task;
 
 fn main() {
     let cfg = load_config();
@@ -20,7 +22,8 @@ fn main() {
         }
     }
 
-    App::new()
+    let mut app = App::new();
+    app
         .add_plugins(
             DefaultPlugins
                 .set(WindowPlugin {
@@ -65,6 +68,12 @@ fn main() {
             systems::ui::game_over_restart_system,
             systems::levels::exit_detection_system,
             systems::player::apply_pending_start_system,
-        ))
-        .run();
+        ));
+
+    // On web, poll the async level fetch task each frame.
+    #[cfg(target_arch = "wasm32")]
+    {
+        app.add_systems(Update, (poll_wasm_level_task,));
+    }
+    app.run();
 }
