@@ -1,0 +1,23 @@
+# Trunk configuration for web build
+[build]
+# We'll pass --public-url from CLI or workflow
+release = true
+
+[serve]
+open = true
+port = 8080
+
+[[copy]]
+# Ensure assets are copied into dist
+source = "assets"
+dist = "assets"
+
+[[copy]]
+# Copy levels from repo root so the web build can load them by name
+source = "../levels"
+dist = "levels"
+
+[[copy]]
+# Copy config file if present
+source = "config.toml"
+dest = "config.toml"

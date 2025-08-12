@@ -180,17 +180,15 @@ struct EditorApp {
     snap_enabled: bool,
     snap_size: f32,
     status: String,
-    // file path for Save
     current_path: Option<std::path::PathBuf>,
-    // tools and selection
     tool: Tool,
     selection: Selection,
-    // temp state for drawing new rects
     drag_start_world: Option<Vec2>,
-    // resizing state
     resizing: Option<ResizeState>,
-    // need to frame content after load/new when viewport known
     needs_frame: bool,
+    web_repo_owner: String,
+    web_repo_name: String,
+    web_token: String,
 }
 
 impl Default for EditorApp {
@@ -207,6 +205,9 @@ impl Default for EditorApp {
             drag_start_world: None,
             resizing: None,
             needs_frame: false,
+            web_repo_owner: String::new(),
+            web_repo_name: String::new(),
+            web_token: String::new(),
         }
     }
 }

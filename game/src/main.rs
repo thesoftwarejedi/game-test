@@ -22,16 +22,22 @@ fn main() {
 
     App::new()
         .add_plugins(
-            DefaultPlugins.set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "Rust Side Scroller".to_string(),
-                    resolution: (960.0, 540.0).into(),
-                    present_mode: bevy::window::PresentMode::AutoVsync,
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Rust Side Scroller".to_string(),
+                        resolution: (960.0, 540.0).into(),
+                        present_mode: bevy::window::PresentMode::AutoVsync,
+                        ..default()
+                    }),
+                    ..default()
+                })
+                .set(ImagePlugin::default_nearest())
+                // Use a relative assets folder so it works in WASM builds
+                .set(bevy::asset::AssetPlugin {
+                    file_path: "assets".into(),
                     ..default()
                 }),
-                ..default()
-            })
-            .set(ImagePlugin::default_nearest()),
         )
         .insert_resource(cfg)
         .insert_resource(PendingStart::default())

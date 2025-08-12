@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rust Side Scroller (Web)</title>
+    <!-- Trunk will build the Rust crate to WASM -->
+    <link data-trunk rel="rust" data-cargo="../Cargo.toml" data-target="wasm32-unknown-unknown" data-bin="game" />
+    <!-- Copy assets directory into dist -->
+    <link data-trunk rel="copy-dir" href="assets" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #111; }
+      canvas { display: block; width: 100vw; height: 100vh; }
+    </style>
+  </head>
+  <body>
+  </body>
+</html>
