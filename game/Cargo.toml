@@ -13,11 +13,23 @@ bevy = { version = "0.14", default-features = false, features = [
   "bevy_text",
   "bevy_asset",
   "png",
-  "dynamic_linking",
 ] }
 serde = { version = "1", features = ["derive"] }
 toml = "0.8"
 level_format = { path = "../level_format" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# On wasm, avoid dynamic_linking and enable a web backend feature if needed
+bevy = { version = "0.14", default-features = false, features = [
+  "bevy_winit",
+  "bevy_render",
+  "bevy_core_pipeline",
+  "bevy_sprite",
+  "bevy_ui",
+  "bevy_text",
+  "bevy_asset",
+  "png",
+] }
 
 [profile.dev]
 opt-level = 1
